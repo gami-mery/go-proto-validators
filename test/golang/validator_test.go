@@ -416,6 +416,11 @@ func TestStringLengthValidator(t *testing.T) {
 	if err := StringLengthSuccess.Validate(); err != nil {
 		t.Fatalf("validate shouldn't fail on equal length")
 	}
+
+	StringLengthSuccessKana := buildProto3("-%ab", 11, "abba", 99, 0.5, 0.5, 0.5, 0.5, "x", 4, "あいうえおかきくけこ", stableBytes)
+	if err := StringLengthSuccessKana.Validate(); err != nil {
+		t.Fatalf("validate shouldn't fail on equal length / multi bytes: %v", err)
+	}
 }
 
 func TestBytesLengthValidator(t *testing.T) {

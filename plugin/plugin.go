@@ -55,12 +55,12 @@ import (
 	"strconv"
 	"strings"
 
+	validator "github.com/gami-mery/go-proto-validators"
 	"github.com/gogo/protobuf/gogoproto"
 	"github.com/gogo/protobuf/proto"
 	descriptor "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
 	"github.com/gogo/protobuf/protoc-gen-gogo/generator"
 	"github.com/gogo/protobuf/vanity"
-	"github.com/mwitkow/go-proto-validators"
 )
 
 type plugin struct {
@@ -68,6 +68,7 @@ type plugin struct {
 	generator.PluginImports
 	regexPkg      generator.Single
 	fmtPkg        generator.Single
+	utfPkg        generator.Single
 	protoPkg      generator.Single
 	validatorPkg  generator.Single
 	useGogoImport bool
@@ -92,7 +93,8 @@ func (p *plugin) Generate(file *generator.FileDescriptor) {
 	p.PluginImports = generator.NewPluginImports(p.Generator)
 	p.regexPkg = p.NewImport("regexp")
 	p.fmtPkg = p.NewImport("fmt")
-	p.validatorPkg = p.NewImport("github.com/mwitkow/go-proto-validators")
+	p.utfPkg = p.NewImport("unicode/utf8")
+	p.validatorPkg = p.NewImport("github.com/gami-mery/go-proto-validators")
 
 	for _, msg := range file.Messages() {
 		if msg.DescriptorProto.GetOptions().GetMapEntry() {
@@ -395,7 +397,35 @@ func (p *plugin) generateLengthValidator(variableName string, ccTypeName string,
 		p.Out()
 		p.P(`}`)
 	}
+}
 
+func (p *plugin) generateStringLengthValidator(variableName string, ccTypeName string, fieldName string, fv *validator.FieldValidator) {
+	if fv.LengthGt != nil {
+		p.P(`if !( `, p.utfPkg.Use(), `.RuneCountInString(`, variableName, `) > `, fv.LengthGt, `) {`)
+		p.In()
+		errorStr := fmt.Sprintf(`length be greater than '%d'`, fv.GetLengthGt())
+		p.generateErrorString(variableName, fieldName, errorStr, fv)
+		p.Out()
+		p.P(`}`)
+	}
+
+	if fv.LengthLt != nil {
+		p.P(`if !( `, p.utfPkg.Use(), `.RuneCountInString(`, variableName, `) < `, fv.LengthLt, `) {`)
+		p.In()
+		errorStr := fmt.Sprintf(`length be less than '%d'`, fv.GetLengthLt())
+		p.generateErrorString(variableName, fieldName, errorStr, fv)
+		p.Out()
+		p.P(`}`)
+	}
+
+	if fv.LengthEq != nil {
+		p.P(`if !( `, p.utfPkg.Use(), `.RuneCountInString(`, variableName, `) == `, fv.LengthEq, `) {`)
+		p.In()
+		errorStr := fmt.Sprintf(`length be not equal '%d'`, fv.GetLengthEq())
+		p.generateErrorString(variableName, fieldName, errorStr, fv)
+		p.Out()
+		p.P(`}`)
+	}
 }
 
 func (p *plugin) generateFloatValidator(variableName string, ccTypeName string, fieldName string, fv *validator.FieldValidator) {
@@ -495,7 +525,7 @@ func (p *plugin) generateStringValidator(variableName string, ccTypeName string,
 		p.Out()
 		p.P(`}`)
 	}
-	p.generateLengthValidator(variableName, ccTypeName, fieldName, fv)
+	p.generateStringLengthValidator(variableName, ccTypeName, fieldName, fv)
 
 }
 
