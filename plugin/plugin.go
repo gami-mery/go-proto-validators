@@ -68,6 +68,7 @@ type plugin struct {
 	generator.PluginImports
 	regexPkg      generator.Single
 	fmtPkg        generator.Single
+	mathPkg        generator.Single
 	utfPkg        generator.Single
 	protoPkg      generator.Single
 	validatorPkg  generator.Single
@@ -93,6 +94,7 @@ func (p *plugin) Generate(file *generator.FileDescriptor) {
 	p.PluginImports = generator.NewPluginImports(p.Generator)
 	p.regexPkg = p.NewImport("regexp")
 	p.fmtPkg = p.NewImport("fmt")
+	p.mathPkg = p.NewImport("math")
 	p.utfPkg = p.NewImport("unicode/utf8")
 	p.validatorPkg = p.NewImport("github.com/gami-mery/go-proto-validators")
 
@@ -404,7 +406,7 @@ func (p *plugin) generateStringLengthValidator(variableName string, ccTypeName s
 		p.P(`if !( `, p.utfPkg.Use(), `.RuneCountInString(`, variableName, `) > `, fv.LengthGt, `) {`)
 		p.In()
 		errorStr := fmt.Sprintf(`length be greater than '%d'`, fv.GetLengthGt())
-		p.generateErrorString(variableName, fieldName, errorStr, fv)
+		p.generateErrorRuneString(variableName, fieldName, errorStr, fv)
 		p.Out()
 		p.P(`}`)
 	}
@@ -413,7 +415,7 @@ func (p *plugin) generateStringLengthValidator(variableName string, ccTypeName s
 		p.P(`if !( `, p.utfPkg.Use(), `.RuneCountInString(`, variableName, `) < `, fv.LengthLt, `) {`)
 		p.In()
 		errorStr := fmt.Sprintf(`length be less than '%d'`, fv.GetLengthLt())
-		p.generateErrorString(variableName, fieldName, errorStr, fv)
+		p.generateErrorRuneString(variableName, fieldName, errorStr, fv)
 		p.Out()
 		p.P(`}`)
 	}
@@ -422,7 +424,7 @@ func (p *plugin) generateStringLengthValidator(variableName string, ccTypeName s
 		p.P(`if !( `, p.utfPkg.Use(), `.RuneCountInString(`, variableName, `) == `, fv.LengthEq, `) {`)
 		p.In()
 		errorStr := fmt.Sprintf(`length be not equal '%d'`, fv.GetLengthEq())
-		p.generateErrorString(variableName, fieldName, errorStr, fv)
+		p.generateErrorRuneString(variableName, fieldName, errorStr, fv)
 		p.Out()
 		p.P(`}`)
 	}
@@ -513,7 +515,7 @@ func (p *plugin) generateStringValidator(variableName string, ccTypeName string,
 		p.P(`if !`, p.regexName(ccTypeName, fieldName), `.MatchString(`, variableName, `) {`)
 		p.In()
 		errorStr := "be a string conforming to regex " + strconv.Quote(fv.GetRegex())
-		p.generateErrorString(variableName, fieldName, errorStr, fv)
+		p.generateErrorRuneString(variableName, fieldName, errorStr, fv)
 		p.Out()
 		p.P(`}`)
 	}
@@ -521,7 +523,7 @@ func (p *plugin) generateStringValidator(variableName string, ccTypeName string,
 		p.P(`if `, variableName, ` == "" {`)
 		p.In()
 		errorStr := "not be an empty string"
-		p.generateErrorString(variableName, fieldName, errorStr, fv)
+		p.generateErrorRuneString(variableName, fieldName, errorStr, fv)
 		p.Out()
 		p.P(`}`)
 	}
@@ -555,13 +557,16 @@ func (p *plugin) generateRepeatedCountValidator(variableName string, ccTypeName 
 
 func (p *plugin) generateErrorString(variableName string, fieldName string, specificError string, fv *validator.FieldValidator) {
 	if fv.GetHumanError() == "" {
-		p.P(`r := []rune(`, variableName, `)`)
-		p.P(`v := fmt.Println(string(r[0:100]))`)
-		p.P(`return `, p.validatorPkg.Use(), `.FieldError("`, fieldName, `",`, p.fmtPkg.Use(), ".Errorf(`value '%v' must ", specificError, "`", `, `, `v`, `))`)
+		p.P(`return `, p.validatorPkg.Use(), `.FieldError("`, fieldName, `",`, p.fmtPkg.Use(), ".Errorf(`value '%v' must ", specificError, "`", `, `, variableName, `))`)
 	} else {
 		p.P(`return `, p.validatorPkg.Use(), `.FieldError("`, fieldName, `",`, p.fmtPkg.Use(), ".Errorf(`", fv.GetHumanError(), "`))")
 	}
+}
 
+func (p *plugin) generateErrorRuneString(variableName string, fieldName string, specificError string, fv *validator.FieldValidator) {
+	p.P(`r := []rune(`, variableName, `)`)
+	p.P(`v := string(r[0:int(math.Min(100, float64(len(r))))])`)
+	p.P(`return `, p.validatorPkg.Use(), `.FieldError("`, fieldName, `",`, p.fmtPkg.Use(), ".Errorf(`value '%v' must ", specificError, "`", `, v))`)
 }
 
 func (p *plugin) fieldIsProto3Map(file *generator.FileDescriptor, message *generator.Descriptor, field *descriptor.FieldDescriptorProto) bool {
